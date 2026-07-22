@@ -14,6 +14,7 @@ import { NotesEditor } from "@/components/NotesEditor";
 import { ChipSelector } from "@/components/ChipSelector";
 import { AnimatedButton } from "@/components/AnimatedButton";
 import { FilmReelGallery } from "@/components/FilmReelGallery";
+import { UserIdentityCard } from "@/components/UserIdentityCard";
 import { submitFeedbackToGoogle } from "@/lib/googleSheets";
 import { FeedbackResponse, StepId } from "@/types";
 import { Utensils, Dices, Music, Trophy, MessageCircleHeart, Sparkles, Loader2, AlertCircle } from "lucide-react";
@@ -28,8 +29,10 @@ export default function Home() {
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Future-proof feedback data response object
+  // Feedback data response object with User Identity
   const [feedback, setFeedback] = useState<FeedbackResponse>({
+    userName: "",
+    userEmail: "",
     overallExperience: "",
     favoritePart: "",
     foodRating: 0,
@@ -39,7 +42,7 @@ export default function Home() {
     nextYearNotes: "",
   });
 
-  const TOTAL_STEPS = 8;
+  const TOTAL_STEPS = 9;
 
   const goToStep = (nextStep: StepId) => {
     setDirection(nextStep > currentStep ? 1 : -1);
@@ -73,6 +76,9 @@ export default function Home() {
     setIsSubmitting(false);
     if (res.success) {
       setSubmitStatus("success");
+      if (res.isUpdate) {
+        triggerToast("Existing response updated cleanly! ✨");
+      }
       if (!customFeedbackData) {
         setTimeout(() => {
           handleNext();
@@ -182,8 +188,47 @@ export default function Home() {
               </div>
             )}
 
-            {/* SCREEN 2: OVERALL VIBE */}
+            {/* SCREEN 2: USER IDENTITY STEP */}
             {currentStep === 2 && (
+              <div className="flex-1 flex flex-col justify-between overflow-hidden min-h-0">
+                <div className="flex-1 overflow-y-auto no-scrollbar p-6">
+                  <QuestionCard
+                    emoji="👋"
+                    badgeText="Welcome"
+                    accentColor="#5B2EFF"
+                    title="Let's personalize your story"
+                    subtitle="We'll save your responses so you can update them anytime."
+                  >
+                    <UserIdentityCard
+                      initialName={feedback.userName}
+                      initialEmail={feedback.userEmail}
+                      onConfirm={(name, email) => {
+                        setFeedback((prev) => ({
+                          ...prev,
+                          userName: name,
+                          userEmail: email,
+                        }));
+                        setTimeout(handleNext, 200);
+                      }}
+                    />
+                  </QuestionCard>
+                </div>
+
+                <div className="sticky bottom-0 left-0 right-0 z-30 p-4 px-6 bg-white/95 backdrop-blur-md border-t border-[#EFECE6] shadow-[0_-8px_24px_rgba(0,0,0,0.04)] pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+                  <AnimatedButton
+                    onClick={handleNext}
+                    disabled={!feedback.userName?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(feedback.userEmail || "")}
+                    variant="primary"
+                    showArrow
+                  >
+                    Continue
+                  </AnimatedButton>
+                </div>
+              </div>
+            )}
+
+            {/* SCREEN 3: OVERALL VIBE */}
+            {currentStep === 3 && (
               <div className="flex-1 flex flex-col justify-between overflow-hidden min-h-0">
                 <div className="flex-1 overflow-y-auto no-scrollbar p-6">
                   <QuestionCard
@@ -229,8 +274,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* SCREEN 3: FAVOURITE PART */}
-            {currentStep === 3 && (
+            {/* SCREEN 4: FAVOURITE PART */}
+            {currentStep === 4 && (
               <div className="flex-1 flex flex-col justify-between overflow-hidden min-h-0">
                 <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-4">
                   <ImagePlaceholder
@@ -282,8 +327,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* SCREEN 4: FOOD RATING */}
-            {currentStep === 4 && (
+            {/* SCREEN 5: FOOD RATING */}
+            {currentStep === 5 && (
               <div className="flex-1 flex flex-col justify-between overflow-hidden min-h-0">
                 <div className="flex-1 overflow-y-auto no-scrollbar p-6">
                   <QuestionCard
@@ -313,8 +358,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* SCREEN 5: ENTERTAINMENT SLIDER */}
-            {currentStep === 5 && (
+            {/* SCREEN 6: ENTERTAINMENT SLIDER */}
+            {currentStep === 6 && (
               <div className="flex-1 flex flex-col justify-between overflow-hidden min-h-0">
                 <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-4">
                   <ImagePlaceholder
@@ -345,8 +390,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* SCREEN 6: HIGHLIGHT NOTE */}
-            {currentStep === 6 && (
+            {/* SCREEN 7: HIGHLIGHT NOTE */}
+            {currentStep === 7 && (
               <div className="flex-1 flex flex-col justify-between overflow-hidden min-h-0">
                 <div className="flex-1 overflow-y-auto no-scrollbar p-6">
                   <QuestionCard
@@ -373,8 +418,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* SCREEN 7: NEXT YEAR WISHLIST & INITIAL GOOGLE SHEETS SYNC */}
-            {currentStep === 7 && (
+            {/* SCREEN 8: NEXT YEAR WISHLIST & INITIAL GOOGLE SHEETS SYNC */}
+            {currentStep === 8 && (
               <div className="flex-1 flex flex-col justify-between overflow-hidden min-h-0">
                 <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-4">
                   <QuestionCard
@@ -449,12 +494,14 @@ export default function Home() {
               </div>
             )}
 
-            {/* SCREEN 8: IMMERSIVE 35MM LIVING FILM REEL GALLERY */}
-            {currentStep === 8 && (
+            {/* SCREEN 9: IMMERSIVE 35MM LIVING FILM REEL GALLERY */}
+            {currentStep === 9 && (
               <div className="flex-1 flex flex-col justify-between overflow-hidden min-h-0 p-1">
                 <FilmReelGallery
                   onRestart={() => {
                     setFeedback({
+                      userName: "",
+                      userEmail: "",
                       overallExperience: "",
                       favoritePart: "",
                       foodRating: 0,

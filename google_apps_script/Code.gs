@@ -1,21 +1,13 @@
 /**
  * Google Apps Script Backend API - Sugar.fit 5th Anniversary Memory Wall & Feedback DB
  * 
- * SETUP INSTRUCTIONS:
- * 1. Open Google Apps Script editor.
- * 2. Replace SPREADSHEET_ID and FOLDER_ID with your actual IDs below.
- * 3. Deploy -> New deployment -> Web app -> Execute as: Me -> Who has access: Anyone.
+ * Includes User Identity, Duplicate Email Detection & Row Updating Logic
  */
 
 var SPREADSHEET_ID = "1FgEnyhrDrJyZK9MeuKx7ZJfcKJJn1l4LtaS95hqodHU";
-var FOLDER_ID = "1XcYUuu5XQMliT0VVgZZdgV7-gRChb1_V";
+var FOLDER_ID = "1XcYUuu5XQMliT0VVgZZdqV7-gRChb1_V";
 var SHEET_NAME = "Sheet1";
 
-/**
- * Handles HTTP GET requests: Serves Live Community Gallery JSON
- * Endpoint: GET ?action=gallery
- * Optional: GET ?action=gallery&preview=true
- */
 function doGet(e) {
   try {
     var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "gallery";
@@ -43,9 +35,6 @@ function doGet(e) {
   }
 }
 
-/**
- * Handles HTTP POST requests: Saves feedback row & uploads memory photo to Google Drive
- */
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
@@ -56,10 +45,9 @@ function doPost(e) {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
 
-    // Ensure headers exist
     ensureHeaders(sheet);
 
-    // Upload memory image to Google Drive if present
+    // Process Google Drive image upload
     var driveImageUrl = "";
     var directWebImageUrl = "";
     if (data.userMemoryImage && data.userMemoryImage.indexOf("data:image/") === 0) {
@@ -69,6 +57,8 @@ function doPost(e) {
     }
 
     var timestamp = data.submittedAt || new Date().toISOString();
+    var userName = data.userName || "Anonymous";
+    var userEmail = (data.userEmail || "").trim().toLowerCase();
     var overallExperience = data.overallExperience || "";
     var favoritePart = data.favoritePart || "";
     var foodRating = data.foodRating ? data.foodRating + " / 5" : "";
@@ -84,12 +74,27 @@ function doPost(e) {
     }
     var wishlist = wishlistParts.join(" | ");
     var memoryCaption = data.userMemoryCaption || "";
-    var isApproved = "TRUE"; // Approved by default for live community wall
+    var finalImageUrl = directWebImageUrl || driveImageUrl;
+    var isApproved = "TRUE";
     var createdAt = new Date().toISOString();
 
-    // Append new row to Google Sheet
-    sheet.appendRow([
+    var targetRowIndex = -1;
+
+    // Duplicate detection: Check if userEmail already exists in Column 3 (Email)
+    if (userEmail && sheet.getLastRow() > 1) {
+      var emailValues = sheet.getRange(2, 3, sheet.getLastRow() - 1, 1).getValues();
+      for (var r = 0; r < emailValues.length; r++) {
+        if (emailValues[r][0].toString().trim().toLowerCase() === userEmail) {
+          targetRowIndex = r + 2; // Row number in sheet (1-indexed, starting after header)
+          break;
+        }
+      }
+    }
+
+    var rowValues = [
       timestamp,
+      userName,
+      userEmail,
       overallExperience,
       favoritePart,
       foodRating,
@@ -97,19 +102,33 @@ function doPost(e) {
       highlight,
       wishlist,
       memoryCaption,
-      directWebImageUrl || driveImageUrl,
+      finalImageUrl,
       isApproved,
       createdAt,
-    ]);
+    ];
 
-    var lastRow = sheet.getLastRow();
-
-    return responseJSON({
-      status: "success",
-      message: "Feedback & memory saved directly to Sugar.fit database!",
-      row: lastRow,
-      imageUrl: directWebImageUrl || driveImageUrl,
-    });
+    if (targetRowIndex > 1) {
+      // Update existing row if duplicate email detected
+      sheet.getRange(targetRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
+      return responseJSON({
+        status: "success",
+        message: "Updated existing feedback for " + userEmail,
+        row: targetRowIndex,
+        imageUrl: finalImageUrl,
+        isUpdate: true
+      });
+    } else {
+      // Append new row
+      sheet.appendRow(rowValues);
+      var lastRow = sheet.getLastRow();
+      return responseJSON({
+        status: "success",
+        message: "Feedback & memory saved to Sugar.fit database!",
+        row: lastRow,
+        imageUrl: finalImageUrl,
+        isUpdate: false
+      });
+    }
   } catch (error) {
     Logger.log("doPost Error: " + error.toString());
     return responseJSON({
@@ -119,9 +138,6 @@ function doPost(e) {
   }
 }
 
-/**
- * Fetches gallery photo memories from Google Sheet
- */
 function getGalleryFromSheet(isPreview) {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
@@ -129,17 +145,17 @@ function getGalleryFromSheet(isPreview) {
 
   if (lastRow <= 1) return [];
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
   var items = [];
 
-  for (var i = data.length - 1; i >= 0; i--) { // Reverse order (newest first)
+  for (var i = data.length - 1; i >= 0; i--) {
     var row = data[i];
     var timestamp = row[0];
-    var caption = row[7];
-    var imageUrl = row[8];
-    var approved = row[9];
+    var name = row[1];
+    var caption = row[9];
+    var imageUrl = row[10];
+    var approved = row[11];
 
-    // Filter by approval status if not preview mode
     if (!imageUrl) continue;
     if (!isPreview && approved !== "TRUE" && approved !== true && approved !== "true" && approved !== "") {
       continue;
@@ -150,7 +166,7 @@ function getGalleryFromSheet(isPreview) {
       image: imageUrl,
       title: caption ? "Community Memory" : "Sugar.fit Carnival Memory",
       caption: caption || "Captured at Sugar.fit 5th Anniversary Carnival.",
-      author: "Sugar.fit Member",
+      author: name || "Sugar.fit Member",
       timestamp: timestamp,
       frameNum: "35MM • " + (items.length + 1) + "A",
     });
@@ -159,9 +175,6 @@ function getGalleryFromSheet(isPreview) {
   return items;
 }
 
-/**
- * Uploads Base64 image to Google Drive folder and generates shareable URLs
- */
 function uploadBase64ToDrive(base64DataUrl, folderId) {
   try {
     var folder = DriveApp.getFolderById(folderId);
@@ -185,7 +198,6 @@ function uploadBase64ToDrive(base64DataUrl, folderId) {
     
     var fileId = file.getId();
     var driveUrl = file.getUrl();
-    // Direct web view URL for fast embedding in <img> tags
     var directWebUrl = "https://lh3.googleusercontent.com/d/" + fileId;
 
     return {
@@ -198,13 +210,12 @@ function uploadBase64ToDrive(base64DataUrl, folderId) {
   }
 }
 
-/**
- * Helper to ensure Google Sheet headers are initialized
- */
 function ensureHeaders(sheet) {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
       "Timestamp",
+      "Name",
+      "Email",
       "Overall Experience",
       "Favourite Part",
       "Food Rating",
@@ -216,16 +227,13 @@ function ensureHeaders(sheet) {
       "Approved",
       "Created At",
     ]);
-    var headerRange = sheet.getRange(1, 1, 1, 11);
+    var headerRange = sheet.getRange(1, 1, 1, 13);
     headerRange.setFontWeight("bold");
     headerRange.setBackground("#F2EEFF");
     headerRange.setFontColor("#5B2EFF");
   }
 }
 
-/**
- * Returns JSON response with CORS headers
- */
 function responseJSON(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
 }

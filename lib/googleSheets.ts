@@ -92,7 +92,7 @@ export async function fetchCommunityGallery(scriptUrl?: string): Promise<FilmFra
 export async function submitFeedbackToGoogle(
   feedbackData: FeedbackResponse,
   scriptUrl?: string
-): Promise<{ success: boolean; message?: string; imageUrl?: string; row?: number }> {
+): Promise<{ success: boolean; message?: string; imageUrl?: string; row?: number; isUpdate?: boolean }> {
   const endpoint = scriptUrl || GOOGLE_CONFIG.APPS_SCRIPT_URL;
 
   if (!endpoint || endpoint.includes("YOUR_GOOGLE_APPS_SCRIPT_URL_HERE")) {
@@ -106,6 +106,8 @@ export async function submitFeedbackToGoogle(
     }
 
     const payload = {
+      userName: feedbackData.userName,
+      userEmail: feedbackData.userEmail,
       overallExperience: feedbackData.overallExperience,
       favoritePart: feedbackData.favoritePart,
       foodRating: feedbackData.foodRating,
@@ -136,6 +138,7 @@ export async function submitFeedbackToGoogle(
             message: result.message || "Saved to Google Workspace!",
             imageUrl: result.imageUrl,
             row: result.row,
+            isUpdate: result.isUpdate,
           };
         }
       }
