@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Camera, X, Check, RefreshCw, Loader2, Film } from "lucide-react";
+import { Camera, X, Check, RefreshCw, Loader2, Film, Users } from "lucide-react";
 import { FilmStrip, FilmFrame } from "./FilmStrip";
 import { AnimatedButton } from "./AnimatedButton";
 import { Confetti } from "./Confetti";
+import { fetchCommunityGallery } from "@/lib/googleSheets";
 
 interface FilmReelGalleryProps {
   onRestart: () => void;
@@ -13,17 +14,17 @@ interface FilmReelGalleryProps {
   onSaveMemoryPhoto?: (imageBlobUrl: string, caption: string) => Promise<void>;
 }
 
-// Self-contained SVG Data URLs for 100% offline-proof, bulletproof image rendering
+// Self-contained SVG Data URLs for 100% offline-proof base frames
 const SVG_PHOTOS = {
-  keynote: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" h="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%235B2EFF"/><circle cx="300" cy="180" r="120" fill="%23FF2E93" opacity="0.4"/><path d="M100 350 Q 300 200 500 350" stroke="%23FFC700" stroke-width="12" fill="none"/><text x="300" y="220" font-family="sans-serif" font-weight="900" font-size="32" fill="white" text-anchor="middle">🎉 OPENING NIGHT</text><text x="300" y="260" font-family="sans-serif" font-weight="600" font-size="18" fill="rgba(255,255,255,0.8)" text-anchor="middle">Sugar.fit 5th Anniversary</text></svg>`,
-  awards: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" h="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%23FF2E93"/><circle cx="450" cy="120" r="100" fill="%23FFC700" opacity="0.5"/><polygon points="300,100 330,190 420,190 350,240 375,330 300,280 225,330 250,240 180,190 270,190" fill="%23FFC700"/><text x="300" y="370" font-family="sans-serif" font-weight="900" font-size="30" fill="white" text-anchor="middle">🏆 TEAM CHAMPIONS</text></svg>`,
-  feast: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" h="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%23FF5E2E"/><circle cx="150" cy="300" r="140" fill="%23FFC700" opacity="0.4"/><text x="300" y="210" font-family="sans-serif" font-weight="900" font-size="64" text-anchor="middle">🍽️</text><text x="300" y="290" font-family="sans-serif" font-weight="900" font-size="30" fill="white" text-anchor="middle">GOURMET SPREAD</text></svg>`,
-  music: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" h="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%2300D68F"/><circle cx="300" cy="220" r="160" fill="%2300B2FF" opacity="0.3"/><text x="300" y="210" font-family="sans-serif" font-weight="900" font-size="64" text-anchor="middle">🎵</text><text x="300" y="290" font-family="sans-serif" font-weight="900" font-size="30" fill="white" text-anchor="middle">DANCE FLOOR ENERGY</text></svg>`,
-  games: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" h="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%2300B2FF"/><circle cx="400" cy="300" r="130" fill="%235B2EFF" opacity="0.4"/><text x="300" y="210" font-family="sans-serif" font-weight="900" font-size="64" text-anchor="middle">🎯</text><text x="300" y="290" font-family="sans-serif" font-weight="900" font-size="30" fill="white" text-anchor="middle">CARNIVAL ARENA</text></svg>`,
+  keynote: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%235B2EFF"/><circle cx="300" cy="180" r="120" fill="%23FF2E93" opacity="0.4"/><path d="M100 350 Q 300 200 500 350" stroke="%23FFC700" stroke-width="12" fill="none"/><text x="300" y="220" font-family="sans-serif" font-weight="900" font-size="32" fill="white" text-anchor="middle">🎉 OPENING NIGHT</text><text x="300" y="260" font-family="sans-serif" font-weight="600" font-size="18" fill="rgba(255,255,255,0.8)" text-anchor="middle">Sugar.fit 5th Anniversary</text></svg>`,
+  awards: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%23FF2E93"/><circle cx="450" cy="120" r="100" fill="%23FFC700" opacity="0.5"/><polygon points="300,100 330,190 420,190 350,240 375,330 300,280 225,330 250,240 180,190 270,190" fill="%23FFC700"/><text x="300" y="370" font-family="sans-serif" font-weight="900" font-size="30" fill="white" text-anchor="middle">🏆 TEAM CHAMPIONS</text></svg>`,
+  feast: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%23FF5E2E"/><circle cx="150" cy="300" r="140" fill="%23FFC700" opacity="0.4"/><text x="300" y="210" font-family="sans-serif" font-weight="900" font-size="64" text-anchor="middle">🍽️</text><text x="300" y="290" font-family="sans-serif" font-weight="900" font-size="30" fill="white" text-anchor="middle">GOURMET SPREAD</text></svg>`,
+  music: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%2300D68F"/><circle cx="300" cy="220" r="160" fill="%2300B2FF" opacity="0.3"/><text x="300" y="210" font-family="sans-serif" font-weight="900" font-size="64" text-anchor="middle">🎵</text><text x="300" y="290" font-family="sans-serif" font-weight="900" font-size="30" fill="white" text-anchor="middle">DANCE FLOOR ENERGY</text></svg>`,
+  games: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="450" viewBox="0 0 600 450"><rect width="100%" height="100%" fill="%2300B2FF"/><circle cx="400" cy="300" r="130" fill="%235B2EFF" opacity="0.4"/><text x="300" y="210" font-family="sans-serif" font-weight="900" font-size="64" text-anchor="middle">🎯</text><text x="300" y="290" font-family="sans-serif" font-weight="900" font-size="30" fill="white" text-anchor="middle">CARNIVAL ARENA</text></svg>`,
 };
 
-// Hero 35mm Film Collection (Self-contained, 100% offline-ready)
-const HERO_FILM_FRAMES: FilmFrame[] = [
+// Base 35mm Official Frames
+const BASE_HERO_FRAMES: FilmFrame[] = [
   {
     id: "hero-1",
     image: SVG_PHOTOS.keynote,
@@ -66,7 +67,9 @@ export function FilmReelGallery({
   onTriggerToast,
   onSaveMemoryPhoto,
 }: FilmReelGalleryProps) {
-  const [frames, setFrames] = useState<FilmFrame[]>(HERO_FILM_FRAMES);
+  const [frames, setFrames] = useState<FilmFrame[]>(BASE_HERO_FRAMES);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [communityCount, setCommunityCount] = useState<number>(0);
 
   // Selected Frame Lightbox State
   const [selectedFrame, setSelectedFrame] = useState<FilmFrame | null>(null);
@@ -76,6 +79,40 @@ export function FilmReelGallery({
   const [tempCaption, setTempCaption] = useState<string>("");
   const [isDevelopingPhoto, setIsDevelopingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch Live Community Wall Memories from Google Workspace
+  const loadCommunityGallery = useCallback(async () => {
+    setIsSyncing(true);
+    const liveItems = await fetchCommunityGallery();
+    setIsSyncing(false);
+
+    if (liveItems && liveItems.length > 0) {
+      setCommunityCount(liveItems.length);
+      setFrames((prev) => {
+        // Merge base frames with live community items cleanly without duplicates
+        const existingIds = new Set(prev.map((f) => f.id));
+        const newUniqueItems = liveItems.filter((item) => !existingIds.has(item.id));
+        return [...newUniqueItems, ...prev];
+      });
+    }
+  }, []);
+
+  // Initial load & background polling every 20s
+  useEffect(() => {
+    let mounted = true;
+    const fetchGallery = async () => {
+      if (!mounted) return;
+      await loadCommunityGallery();
+    };
+
+    fetchGallery();
+    const interval = setInterval(fetchGallery, 20000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [loadCommunityGallery]);
 
   const handleTriggerPicker = () => {
     fileInputRef.current?.click();
@@ -93,7 +130,7 @@ export function FilmReelGallery({
     if (!tempImage) return;
 
     setIsDevelopingPhoto(true);
-    onTriggerToast("Developing 35mm photo memory...");
+    onTriggerToast("Uploading memory photo to Google Drive & database...");
 
     const newFrame: FilmFrame = {
       id: `user-frame-${Date.now()}`,
@@ -101,7 +138,7 @@ export function FilmReelGallery({
       title: "Your Carnival Memory",
       caption: tempCaption.trim() || "Preserved in the Sugar.fit Living Film Archive.",
       author: "You",
-      frameNum: `35MM • ${Math.floor(Math.random() * 89 + 10)}A`,
+      frameNum: `35MM • NEW`,
     };
 
     // Trigger Google Workspace Upload if handler provided
@@ -109,19 +146,20 @@ export function FilmReelGallery({
       try {
         await onSaveMemoryPhoto(tempImage, tempCaption.trim());
       } catch {
-        // Graceful fallback without blocking user experience
+        // Fallback gracefully
       }
     }
 
     // Insert newly developed frame directly into the single hero 35mm film strip
     setFrames((prev) => [newFrame, ...prev]);
+    setCommunityCount((prev) => prev + 1);
 
     setTimeout(() => {
       setIsDevelopingPhoto(false);
       setTempImage(null);
       setTempCaption("");
-      onTriggerToast("Photo developed & woven into the living film reel! 🎬✨");
-    }, 1500);
+      onTriggerToast("Your memory is now live on Sugar.fit's collective reel! 🎬✨");
+    }, 1400);
   };
 
   return (
@@ -139,17 +177,28 @@ export function FilmReelGallery({
       />
 
       {/* Top Header Bar */}
-      <div className="flex items-center justify-between px-3 py-2 z-30 shrink-0 border-b border-[#EFECE6]/60">
+      <div className="flex items-center justify-between px-3 py-2 z-30 shrink-0 border-b border-[#EFECE6]/60 bg-white/90 backdrop-blur-xs">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-[#111111] text-white flex items-center justify-center text-xs shadow-xs">
+          <div className="w-6 h-6 rounded-full bg-[#111111] text-white flex items-center justify-center text-xs shadow-xs relative">
             <Film className="w-3.5 h-3.5 stroke-[2]" />
+            {isSyncing && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#00D68F] animate-ping" />
+            )}
           </div>
           <div className="flex flex-col">
-            <span className="text-xs font-extrabold text-[#1D1C1A] tracking-tight">
-              Single 35mm Living Reel
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-extrabold text-[#1D1C1A] tracking-tight">
+                Live Community Reel
+              </span>
+              {communityCount > 0 && (
+                <span className="text-[9px] font-extrabold bg-[#5B2EFF] text-white px-1.5 py-0.2 rounded-full flex items-center gap-0.5">
+                  <Users className="w-2.5 h-2.5" />
+                  <span>{communityCount}</span>
+                </span>
+              )}
+            </div>
             <span className="text-[9px] font-bold text-[#5B2EFF] tracking-wider uppercase">
-              Sugar.fit Projector
+              Sugar.fit 35mm Archive
             </span>
           </div>
         </div>
@@ -161,7 +210,7 @@ export function FilmReelGallery({
             className="py-1.5 px-3 rounded-full bg-[#5B2EFF] text-white text-xs font-extrabold flex items-center gap-1.5 shadow-md hover:bg-[#4D24E0] transition-colors cursor-pointer"
           >
             <Camera className="w-3.5 h-3.5" />
-            <span>Contribute Memory</span>
+            <span>Add Memory</span>
           </button>
 
           <button
@@ -281,7 +330,7 @@ export function FilmReelGallery({
               <div className="flex items-center justify-between">
                 <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#5B2EFF] bg-[#5B2EFF]/20 px-3 py-1 rounded-full border border-[#5B2EFF]/30">
                   <Film className="w-3.5 h-3.5" />
-                  <span>35mm Film Development</span>
+                  <span>35mm Community Development</span>
                 </div>
                 {!isDevelopingPhoto && (
                   <button
@@ -341,12 +390,12 @@ export function FilmReelGallery({
                 {isDevelopingPhoto ? (
                   <div className="flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Developing & Weaving Photo...</span>
+                    <span>Saving & Weaving Photo...</span>
                   </div>
                 ) : (
                   <div className="flex items-center justify-center gap-2">
                     <Check className="w-4 h-4 stroke-[2.5]" />
-                    <span>Develop Photo into Film Reel</span>
+                    <span>Publish Memory to Community Reel</span>
                   </div>
                 )}
               </AnimatedButton>
